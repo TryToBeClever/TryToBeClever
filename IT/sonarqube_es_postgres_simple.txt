@@ -1,0 +1,165 @@
+SONARQUBE+ELASTICSEARCH &POSTGRES
+
+— COMPONENTS —
+2xNODEs:
+
+nodeDB – Centos 7.X
+nodeAPP – Centos 7.X
+
+Soft versions:
+Postgresql 10
+Sonarqube 8.0
+
+— INSTALL & CONFIGURE POSTGRES DB —
+1) Install PSQL CLIENT TOOLS
+[nodeAPP]# yum install postgresql-9.2.24-1.el7_5.x86_64
+
+2) Install POSTGRESQL DATABASE
+[nodeDB]# yum install postgresql10-server postgresql10
+[nodeDB]# /usr/pgsql-10/bin/postgresql-10-setup initdb
+[nodeDB]# systemctl start postgresql-10.service
+[nodeDB]# systemctl enable postgresql-10.service
+
+—— add to pg_hba.conf file ——
+
+[nodeDB]# vi /var/lib/pgsql/10/data/pg_hba.conf
+
+# Allow SonarQube Server
+host all all [ip_of_nodeAPP]/32 md5
+
+——————————————-
+
+—— uncomment in postgresql.conf file ——
+
+
+[nodeDB]# vi /var/lib/pgsql/10/data/postgresql.conf
+
+listen_addresses = ‘*’        # what IP address(es) to listen on;
+
+——————————————
+
+[nodeDB]# systemctl restart postgresql-10.service
+
+[nodeDB]# su – postgres -c “psql”
+psql (10.10)
+Type “help” for help.
+
+postgres=# \password postgres      # set password for postgresql user
+
+postgres=# create user sonarqube with encrypted password ‘sonarqube’;
+CREATE ROLE
+
+postgres=# create database sonarqube owner sonarqube;
+CREATE DATABASE
+
+postgres=# \l
+List of databases
+Name | Owner | Encoding | Collate | Ctype | Access privileges
+———–+———–+———-+————-+————-+———————–
+postgres | postgres | UTF8 | en_US.UTF-8 | en_US.UTF-8 |
+sonarqube | sonarqube | UTF8 | en_US.UTF-8 | en_US.UTF-8 |
+template0 | postgres | UTF8 | en_US.UTF-8 | en_US.UTF-8 | =c/postgres +
+| | | | | postgres=CTc/postgres
+template1 | postgres | UTF8 | en_US.UTF-8 | en_US.UTF-8 | =c/postgres +
+| | | | | postgres=CTc/postgres
+(4 rows)
+
+postgres=# \q
+
+[nodeAPP]# psql -h -U sonarqube -d sonarqube
+
+sonarqube=> create schema sonarqube;
+CREATE SCHEMA
+
+sonarqube=> select nspname from pg_catalog.pg_namespace;
+nspname
+pg_toast
+pg_temp_1
+pg_toast_temp_1
+pg_catalog
+public
+information_schema
+sonarqube
+(7 rows)
+
+sonarqube=> ALTER USER sonarqube SET search_path to sonarqube;
+ALTER ROLE
+
+sonarqube=> \q
+INSTALL SONARQUBE & ELASTICSEARCH
+[nodeAPP]# wget https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-8.0.zip
+[nodeAPP]# yum install java-11-openjdk
+[nodeAPP]# useradd -m sonarqube
+[nodeAPP]# echo “” | passwd –stdin sonarqube
+[nodeAPP]# unzip sonarqube-8.0.zip -d /opt
+[nodeAPP]# mv /opt/sonarqube-8.0 /opt/sonarqube
+[nodeAPP]# chown -R sonarqube:sonarqube /opt/sonarqube
+[nodeAPP]# mkdir -p /var/sonarqube/data
+[nodeAPP]# mkdir -p /var/sonarqube/temp
+[nodeAPP]# chown -R sonarqube:sonarqube /var/sonarqube
+
+—- add to file sonar.properties —-
+
+[nodeAPP]# vi /opt/sonarqube/conf/sonar.properties
+
+sonar.web.javaOpts=-server -Xmx1024m -Xms256m -XX:+HeapDumpOnOutOfMemoryError
+sonar.jdbc.username=sonarqube
+sonar.jdbc.password=sonarqube
+sonar.jdbc.url=jdbc:postgresql://[nodeDB]:5432/sonarqube?currentSchema=sonarqube
+sonar.path.data=/var/sonarqube/data
+sonar.path.temp=/var/sonarqube/temp
+
+——————————————
+
+—- add to file elasticsearch.yml —-
+
+[nodeAPP]# vi /opt/sonarqube/elasticsearch/config/elasticsearch.yml
+
+path.data: /var/sonarqube/data
+network.host: [ip_of_nodeAPP]
+http.port: 9200
+
+——————————————
+
+—- add to file sonar.sh —-
+
+
+[nodeAPP]# vi /opt/sonarqube/bin/linux-x86-64/sonar.sh
+
+RUN_AS_USER=sonarqube
+
+——————————————
+
+—- add to file wrapper.conf —-
+
+[nodeAPP]# vi /opt/sonarqube/conf/wrapper.conf
+
+wrapper.java.command=/usr/bin/java
+
+——————————————
+
+[nodeAPP]# su – sonarqube
+
+[nodeAPP]$ /opt/sonarqube/bin/linux-x86-64/sonar.sh start
+
+—- check sonarqube listen process
+
+[nodeAPP]# netstat -antulp | grep -i listen | grep java
+
+tcp 0 0 127.0.0.1:32000 0.0.0.0:* LISTEN 9789/java
+tcp6 0 0 :::9000 :::* LISTEN 9929/java
+tcp6 0 0 127.0.0.1:9001 :::* LISTEN 9817/java
+tcp6 0 0 127.0.0.1:38775 :::* LISTEN 10013/java
+
+
+USEFULL INFO
+
+Sonarqube link:
+http://[nodeAPP]:9000 
+
+Sonarqube logs:
+/opt/sonarqube/logs 
+
+Elastisearch directories:
+/var/sonarqube/data
+/var/sonarqube/temp
