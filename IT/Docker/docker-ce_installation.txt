@@ -1,0 +1,13 @@
+nodeAPP# sudo yum-config-manager –add-repo https://download.docker.com/linux/centos/docker-ce.repo
+
+nodeAPP# sudo yum install -y yum-utils device-mapper-persistent-data lvm2
+
+nodeAPP# sudo yum install -y docker-ce
+
+nodeAPP# rpm -qa | grep docker-ce
+docker-ce-cli-19.03.2-3.el7.x86_64
+docker-ce-19.03.2-3.el7.x86_64
+
+nodeAPP# sudo systemctl start docker
+
+nodeAPP# sudo systemctl enable docker
